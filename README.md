@@ -71,8 +71,8 @@ The Clinic Modernization Platform (CMP) is a cloud-native healthcare management 
 - Responsive web application
 - Multi-branch support
 ## License
-This project is proprietary software.
-All patient records, clinical data, and operational information remain the property of the healthcare organization operating the platform.
+This project design is open source.
+However, all patient records, clinical data, and operational information remain the property of the healthcare organization operating the platform.
 ________________________________________
 ## Contact
 For implementation, deployment, architecture reviews, or enterprise customization, contact the CMP implementation team.
