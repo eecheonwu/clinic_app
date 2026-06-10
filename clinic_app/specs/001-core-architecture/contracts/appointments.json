@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PostAppointmentRequest",
+  "type": "object",
+  "properties": {
+    "doctor_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "branch_id": {
+      "type": "string"
+    },
+    "start_datetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_datetime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "booking_source": {
+      "type": "string",
+      "enum": ["patient", "receptionist", "admin_override"]
+    }
+  },
+  "required": ["doctor_id", "branch_id", "start_datetime", "end_datetime", "booking_source"]
+}
