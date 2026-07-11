@@ -5,9 +5,8 @@
 CMP Phase 1 MVP Implementation (Tasks 1.1-6.4)
 
 ## Evaluation Input
-
-- **Change Impact Map**: No change-impact-map.md found — evaluating current implementation against SSOT
-- **Architecture SSOT Source**: `knowledge/architecture/`
+After the last testing task
+- - **Engineering SSOT Source**: `knowledge/
 
 ## Governance Checks
 
