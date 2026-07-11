@@ -1,4 +1,4 @@
-# Architecture Decision
+# Architecture Governance Decision
 
 ## Feature
 
