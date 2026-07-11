@@ -6,7 +6,7 @@ CMP Phase 1 MVP Implementation (Tasks 1.1-6.4)
 
 ## Evaluation Input
 After the last testing task
-- - **Engineering SSOT Source**: `knowledge/
+- - **Engineering SSOT Source**: `knowledge/`
 
 ## Governance Checks
 
