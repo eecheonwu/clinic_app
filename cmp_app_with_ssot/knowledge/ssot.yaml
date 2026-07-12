@@ -1,0 +1,111 @@
+project:
+  name: Clinic Modernization Platform (CMP)
+
+ssot_version: 2.0
+last_synced: 2026-07-12
+
+authority:
+
+  requirements:
+    source:
+      - SRD v1.3 (Approved, 2026-06-04)
+    knowledge_file: knowledge/product/requirements.md
+
+  architecture:
+    source:
+      - ADR-001 (PostgreSQL — Accepted)
+      - ADR-002 (React PWA — Accepted)
+      - ADR-003 (Column Encryption — Accepted)
+      - ADR-004 (Notification Failover — Accepted)
+      - C4 Architecture Models (2026-06-04)
+      - UML Design Models (Class, Component, Sequence, State, Activity)
+    knowledge_files:
+      - knowledge/architecture/ADR/ADR-001-postgresql-primary-datastore.md
+      - knowledge/architecture/ADR/ADR-002-react-pwa-client.md
+      - knowledge/architecture/ADR/ADR-003-application-level-column-encryption.md
+      - knowledge/architecture/ADR/ADR-004-pluggable-notification-failover.md
+      - knowledge/architecture/C4/system-context.md
+      - knowledge/architecture/C4/containers.md
+      - knowledge/architecture/C4/components.md
+      - knowledge/architecture/UML/class-diagrams.md
+      - knowledge/architecture/UML/component-diagrams.md
+      - knowledge/architecture/UML/sequence-diagrams.md
+      - knowledge/architecture/UML/state-diagrams.md
+      - knowledge/architecture/UML/activity-diagrams.md
+      
+  evaluation:
+    source:
+      - Technology Evaluation (2026-06-04)
+    knowledge_file: knowledge/architecture/evaluation/tech-evaluation.md
+
+  system:
+    source:
+      - Technical Specification v1.0 (Draft, 2026-06-04)
+    knowledge_files:
+      - knowledge/system/overview.md
+      - knowledge/system/services.md
+      - knowledge/system/data-models.md
+
+  engineering:
+    source:
+      - Implementation Plan v1 (2026-06-04)
+      - Task Plan v1 (2026-06-04)
+    knowledge_files:
+      - knowledge/engineering/implementation-plan.md
+      - knowledge/engineering/task-plan.md
+
+
+sync_rules:
+
+  architecture_change:
+    requires_ADR: true
+
+  api_change:
+    update:
+      - knowledge/system/services.md
+      - knowledge/architecture/C4/containers.md
+      - knowledge/architecture/C4/components.md
+
+  schema_change:
+    update:
+      - knowledge/system/data-models.md
+      - knowledge/architecture/C4/components.md
+
+  implementation_change:
+    requires_review: true
+
+  new_provider_or_integration:
+    update:
+      - knowledge/architecture/ADR/ (new ADR required)
+      - knowledge/system/services.md
+      - knowledge/architecture/C4/system-context.md
+
+  next_adrs:
+    next_id: ADR-005
+    status: "No pending integration — current providers (WhatsApp, Termii, Infobip, AWS KMS) covered by ADR-001 through ADR-004"
+
+  completed_tasks:
+    - Task 1.1: Initial Alembic Setup & Base Model (2026-07-07)
+    - Task 1.2: Core Schema: Users & Authentication (2026-07-07)
+    - Task 1.3: Scheduling Schema (2026-07-08)
+    - Task 2.1: Project Scaffolding & Configuration (2026-07-08)
+    - Task 2.2: Authentication & RBAC Module (2026-07-08)
+    - Task 2.3: NotificationService & Async Workers (2026-07-08)
+    - Task 2.4: Scheduling Engine — Appointment Booking with Pessimistic Locking (2026-07-08)
+    - Task 2.5: Clinical Record Service with Encryption (2026-07-09)
+    - Task 2.7: NotificationService Abstraction & Async Workers (2026-07-08)
+    - Task 2.8: Management & Operational Reports (2026-07-09)
+    - Task 4.1: Frontend Foundation — PWA & Auth UI (2026-07-09)
+    - Task 4.2: Patient Portal — Booking Flow (2026-07-09)
+    - Task 5.1: Receptionist Dashboard (2026-07-09)
+    - Task 5.2: Doctor Clinical Portal (2026-07-09)
+    - Task 5.3: Management Dashboard (2026-07-09)
+    - Task 5.4: Admin Console (2026-07-09)
+    - Task 6.1: Backend Unit Tests (2026-07-10)
+    - Task 6.2: Integration Tests — Booking Flow & Clinical Encryption (2026-07-10)
+    - Task 6.3: E2E Tests with Playwright (2026-07-11)
+    - Task 6.4: Performance & Security Tests (2026-07-11)
+    - Task 6.5: OTP Delivery System Tests (2026-07-12)
+    - Frontend Bug Fix: Registration response data access pattern (2026-07-12)
+    - Frontend Enhancement: UI Redesign — Design System Overhaul (2026-07-12)
+    - Backend Fix: OTP Delivery Implementation (2026-07-12)
