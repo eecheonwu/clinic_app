@@ -150,7 +150,7 @@ The project contains multiple engineering artifacts that represent different dim
 | **UML Models** | Represents structural and behavioral design |
 | **Implementation Plan** | Defines architecture-driven implementation |
 | **Task Plan** | Defines executable implementation work |
-| **Source Code** | Represents implementation reality |
+| **App Implementation** | Represents implementation reality |
 
 Together, these artifacts establish a traceability chain:
 
