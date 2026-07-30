@@ -35,12 +35,6 @@ The Clinic Modernization Platform is a working reference implementation demonstr
 
 
 
-### How to Use
-Open the App Implemetation  Directory and follow the DOCKER instructions
-
-
-
-
 ## The Engineering Intelligence Context
 
 The Clinic Modernization Platform is not presented as an isolated software application.
@@ -207,7 +201,7 @@ The project demonstrates an engineering workflow in which implementation is deri
                     AI / Developer
                          │
                          ▼
-                    Source Code
+                    App Implementation
                          │
                          ▼
                        Tests
@@ -259,93 +253,7 @@ The long-term Engineering Intelligence workflow demonstrated by this project is:
 
 This creates the foundation for a closed-loop AI-native software engineering environment.
 
----
 
-## AI Coding Agent Integration
-
-The Engineering Intelligence architecture is designed to allow AI coding agents to access the engineering knowledge of the Clinic Modernization Platform.
-
-The conceptual integration is:
-
-```text
-                 Clinic Modernization Platform
-                            │
-                            ▼
-                    Engineering SSOT
-                            │
-                            ▼
-                     Knowledge Layer
-                            │
-                            │ MCP
-                            ▼
-                     AI Coding Agent
-                            │
-                            ▼
-                      Git Repository
-                            │
-                            ▼
-                     Source Code + Tests
-```
-
-An AI coding agent can therefore operate with access to relevant project context rather than relying exclusively on source code and immediate task instructions.
-
-The intended workflow is:
-
-1. A project task is selected.
-2. The agent retrieves relevant engineering context.
-3. Requirements and constraints are identified.
-4. Relevant architectural decisions are retrieved.
-5. Architecture and design context are assembled.
-6. The agent implements the task.
-7. Source code and tests are updated.
-8. The implementation is synchronized with the Engineering SSOT.
-9. Potential drift is identified.
-10. Changes are analysed for engineering impact.
-
-This establishes the foundation for AI agents that operate within a persistent engineering knowledge environment.
-
----
-
-## Synchronization Concept
-
-The current project provides the engineering artifacts and implementation required to demonstrate the synchronization concept.
-
-The intended synchronization loop is:
-
-```text
-Engineering SSOT
-      │
-      ▼
-Engineering Context
-      │
-      ▼
-AI Coding Agent
-      │
-      ▼
-Code Changes
-      │
-      ▼
-Git Repository
-      │
-      ▼
-Synchronization
-      │
-      ▼
-Implementation Analysis
-      │
-      ▼
-Drift Detection
-      │
-      ▼
-Impact Analysis
-      │
-      ▼
-SSOT Reconciliation
-```
-
-For the current reference implementation, synchronization may be initiated manually at the repository boundary.
-
-The architecture is designed to evolve toward event-driven synchronization using Git repository events, webhooks, and AI agent activity.
 
 ---
 
