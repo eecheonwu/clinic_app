@@ -1,0 +1,173 @@
+project:
+  name: Clinic Modernization Platform (CMP)
+
+ssot_version: 2.4
+last_synced: 2026-07-31
+
+authority:
+
+  requirements:
+    source:
+      - SRD v1.3 (Approved, 2026-06-04)
+    knowledge_file: knowledge/product/requirements.md
+
+  architecture:
+    source:
+      - ADR-001 (PostgreSQL — Accepted)
+      - ADR-002 (React PWA — Accepted)
+      - ADR-003 (Column Encryption — Accepted)
+      - ADR-004 (Notification Failover — Accepted)
+      - ADR-005 (Email Patient Registration — Accepted)
+      - C4 Architecture Models (2026-06-04, updated 2026-07-31)
+      - UML Design Models (Class, Component, Sequence, State, Activity - updated 2026-07-31)
+    knowledge_files:
+      - knowledge/architecture/ADR/ADR-001-postgresql-primary-datastore.md
+      - knowledge/architecture/ADR/ADR-002-react-pwa-client.md
+      - knowledge/architecture/ADR/ADR-003-application-level-column-encryption.md
+      - knowledge/architecture/ADR/ADR-004-pluggable-notification-failover.md
+      - knowledge/architecture/ADR/ADR-005-email-patient-registration.md
+      - knowledge/architecture/C4/system-context.md
+      - knowledge/architecture/C4/containers.md
+      - knowledge/architecture/C4/components.md
+      - knowledge/architecture/UML/class-diagrams.md
+      - knowledge/architecture/UML/component-diagrams.md
+      - knowledge/architecture/UML/sequence-diagrams.md
+      - knowledge/architecture/UML/state-diagrams.md
+      - knowledge/architecture/UML/activity-diagrams.md
+      
+  evaluation:
+    source:
+      - Technology Evaluation (2026-06-04)
+    knowledge_file: knowledge/architecture/evaluation/tech-evaluation.md
+
+  system:
+    source:
+      - Technical Specification v1.0 (Draft, 2026-06-04)
+    knowledge_files:
+      - knowledge/system/overview.md
+      - knowledge/system/services.md
+      - knowledge/system/data-models.md
+
+  engineering:
+    source:
+      - Implementation Plan v2 (2026-06-04, updated 2026-07-31 — Feature Addition: Email-based Patient Registration)
+      - Task Plan v1 (2026-06-04, updated 2026-07-31)
+    knowledge_files:
+      - knowledge/engineering/implementation-plan.md
+      - knowledge/engineering/task-plan.md
+
+
+sync_rules:
+
+  architecture_change:
+    requires_ADR: true
+
+  api_change:
+    update:
+      - knowledge/system/services.md
+      - knowledge/architecture/C4/containers.md
+      - knowledge/architecture/C4/components.md
+
+  schema_change:
+    update:
+      - knowledge/system/data-models.md
+      - knowledge/architecture/C4/components.md
+
+  implementation_change:
+    requires_review: true
+
+  new_provider_or_integration:
+    update:
+      - knowledge/architecture/ADR/ (new ADR required)
+      - knowledge/system/services.md
+      - knowledge/architecture/C4/system-context.md
+
+  next_adrs:
+    next_id: ADR-006
+    status: "ADR-005 Accepted and Documented for Email-based Patient Registration"
+
+  completed_tasks:
+    # Database Tasks
+    - Task 1.1: Initial Alembic Setup & Base Model (2026-07-07)
+    - Task 1.2: Core Schema: Users & Authentication (2026-07-07)
+    - Task 1.3: Scheduling Schema (2026-07-08)
+    - Task 1.4: Clinical Records Schema (2026-07-09)
+    - Task 1.5: Notification & Supporting Schema (2026-07-08)
+    - Task 1.6: Seed Data & Migration (2026-07-09)
+    # Backend Tasks
+    - Task 2.1: Project Scaffolding & Configuration (2026-07-08)
+    - Task 2.2: Authentication & RBAC Module (2026-07-08)
+    - Task 2.3: Scheduling Engine — Doctor Availability (2026-07-08)
+    - Task 2.4: Scheduling Engine — Appointment Booking with Pessimistic Locking (2026-07-08)
+    - Task 2.5: Clinical Record Service with Encryption (2026-07-09)
+    - Task 2.6: Front Desk Operations (2026-07-09)
+    - Task 2.7: NotificationService Abstraction & Async Workers (2026-07-08)
+    - Task 2.8: Management & Operational Reports (2026-07-09)
+    # Frontend Tasks
+    - Task 3.1: Project Scaffolding & PWA Configuration (2026-07-09)
+    - Task 3.2: Authentication UI (2026-07-09)
+    - Task 3.3: Patient Portal (2026-07-09)
+    - Task 3.4: Staff Dashboard (Receptionist) (2026-07-09)
+    - Task 3.5: Doctor Clinical Portal (2026-07-09)
+    - Task 3.6: Management Dashboard (2026-07-09)
+    - Task 3.7: Admin Console (2026-07-09)
+    - Task 3.8: Shared UI Components & Offline Infrastructure (2026-07-09)
+    # Testing Tasks
+    - Task 4.1: Unit Tests — Backend Services (2026-07-10)
+    - Task 4.2: Integration Tests — API Endpoints (2026-07-10)
+    - Task 4.3: Database & Migration Tests (2026-07-10)
+    - Task 4.4: Frontend Tests (2026-07-11)
+    - Task 4.5: End-to-End Tests (2026-07-11)
+    - Task 4.6: Performance Tests (2026-07-11)
+    # Additional Fixes & Enhancements
+    - OTP Delivery System Tests (2026-07-12)
+    - Frontend Bug Fix: Registration response data access pattern (2026-07-12)
+    - Frontend Enhancement: UI Redesign — Design System Overhaul (2026-07-12)
+    - Backend Fix: OTP Delivery Implementation (2026-07-12)
+    - Backend Fix: OTP Delivery Fix Round 2 — Celery config, WhatsApp URL, task refactor (2026-07-25)
+    - Seed Data: Complete seed.py implementation with branch, admin, doctor, and patient seed data (2026-07-26)
+    - SSOT Synchronization: Full SSOT sync with knowledge base files (2026-07-30)
+    - SSOT Synchronization: Version 2.1 — Fixed task numbering, removed false deployment claims, created missing documentation (2026-07-30)
+    - SSOT Synchronization: Version 2.2 — Attached Email-based Patient Registration feature addition implementation plan to implementation-plan.md (2026-07-31)
+    - Checkpoint 0 / Task 0.1: Create ADR-005 — Email-based Patient Registration Architecture (2026-07-31)
+    - Checkpoint 0 / Task 0.2: Update SSOT Artifacts (Pre-Implementation) (2026-07-31)
+    - Checkpoint 1 / Task 1.1: Add email_verification_tokens Table — Alembic migration 0007 (2026-07-31)
+    - Checkpoint 1 / Task 1.1: Add EmailVerificationToken SQLAlchemy model in models/user.py (2026-07-31)
+    - Checkpoint 1 / Task 2.1: Email Notification Provider Adapter — EmailClient in services/notification/providers/email_provider.py (2026-07-31)
+    - Checkpoint 1 / Task 2.1: Email templates — auth_email.html + auth_email.txt in src/backend/templates/email/ (2026-07-31)
+    - Checkpoint 1 / Task 2.1: Celery tasks send_auth_email + send_email_notification added to workers/tasks.py (2026-07-31)
+    - Checkpoint 1 / Task 4.3: Unit Tests — Email Notification Provider (tests/test_email_provider.py, 8/8 passed) (2026-07-31)
+
+  pending_tasks:
+    # Deployment Tasks (NOT YET STARTED)
+    - Task 5.1: Infrastructure Setup
+    - Task 5.2: CI/CD Pipeline
+    - Task 5.3: Staging Environment & Rollout
+    - Task 5.4: Monitoring & Alerting Setup
+    # Feature Addition: Email-based Patient Registration (Implementation Plan v2 / Task Plan Checkpoint 2+)
+    # Database Tasks
+    - Task 1.2: Add is_email_verified Column to users Table (Vertical Slice 2)
+    - Task 1.3: Add email NOT NULL Constraint for New Patients (Vertical Slice 5)
+    # Backend Tasks
+    - Task 2.2: Patient Registration with Email Endpoint
+    - Task 2.3: Email Verification & Password Creation Endpoint
+    - Task 2.4: Patient Login Endpoint
+    - Task 2.5: Resend Verification Email Endpoint
+    - Task 2.6: JWT Token Differentiation & Auth Middleware
+    - Task 2.7: Update Existing Auth Endpoints for Deprecation Path
+    # Frontend Tasks
+    - Task 3.1: Registration Page with Email Input
+    - Task 3.2: Password Creation Page
+    - Task 3.3: Patient Login Page
+    - Task 3.4: Auth State Management & Route Guards
+    # Testing Tasks
+    - Task 4.1: Unit Tests — Email Verification Token Service
+    - Task 4.2: Unit Tests — JWT Audience Differentiation
+    - Task 4.4: Integration Tests — Email Registration Flow
+    - Task 4.5: Integration Tests — Separate Login Flows
+    - Task 4.6: Frontend Tests
+    - Task 4.7: End-to-End Tests
+    # Deployment Tasks (Feature Addition)
+    - Task 5.1: Email Provider Configuration
+    - Task 5.2: Alembic Migration Deployment
+    - Task 5.3: Monitoring & Alerting for Email Delivery
