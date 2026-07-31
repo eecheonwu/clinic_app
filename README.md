@@ -319,7 +319,9 @@ clinic-modernization-platform/
 │
 ├── App_implementation/
 │   └── Clinic Modernization Platform Implementation
-│
+|
+│── Feature_change/
+│   └── Contains all proposed feature change or additions/subtractions to the CMP 
 ```
 
 ---
