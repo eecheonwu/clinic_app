@@ -1,7 +1,7 @@
 # CMP Models Package
 
 from .base import Base, BaseModel, TimestampMixin
-from .user import User, UserRole, PatientProfile, VerificationOTP
+from .user import User, UserRole, PatientProfile, VerificationOTP, EmailVerificationToken
 from .appointment import (
     Appointment,
     AppointmentStatus,
@@ -21,6 +21,7 @@ __all__ = [
     "UserRole",
     "PatientProfile",
     "VerificationOTP",
+    "EmailVerificationToken",
     "Appointment",
     "AppointmentStatus",
     "PaymentStatus",

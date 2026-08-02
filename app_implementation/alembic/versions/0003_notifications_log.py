@@ -85,6 +85,20 @@ def upgrade() -> None:
             nullable=False,
             comment="Number of delivery attempts made",
         ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+            comment="Notification log creation timestamp (UTC)",
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=True,
+            comment="Notification log update timestamp (UTC)",
+        ),
     )
 
     # Index on recipient + sent_at for rate-limit and history queries

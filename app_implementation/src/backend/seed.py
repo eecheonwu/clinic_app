@@ -23,6 +23,9 @@ async def seed():
     engine = create_async_engine(database_url, echo=True)
     
     async with engine.begin() as conn:
+        # Ensure all existing seeded users are marked email verified
+        await conn.execute(text("UPDATE users SET is_email_verified = true WHERE is_email_verified IS FALSE OR is_email_verified IS NULL"))
+
         # Check if users already exist
         result = await conn.execute(text("SELECT COUNT(*) FROM users"))
         user_count = result.scalar_one()
@@ -61,8 +64,8 @@ async def seed():
                 await conn.execute(
                     text(
                         """
-                        INSERT INTO users (id, phone_number, email, password_hash, role, created_at, updated_at)
-                        VALUES (gen_random_uuid(), :phone, :email, :password_hash, :role, NOW(), NOW())
+                        INSERT INTO users (id, phone_number, email, password_hash, role, is_email_verified, created_at, updated_at)
+                        VALUES (gen_random_uuid(), :phone, :email, :password_hash, :role, true, NOW(), NOW())
                         """
                     ),
                     {
@@ -82,8 +85,8 @@ async def seed():
             await conn.execute(
                 text(
                     """
-                    INSERT INTO users (id, phone_number, email, password_hash, role, created_at, updated_at)
-                    VALUES (gen_random_uuid(), :phone, :email, :password_hash, :role, NOW(), NOW())
+                    INSERT INTO users (id, phone_number, email, password_hash, role, is_email_verified, created_at, updated_at)
+                    VALUES (gen_random_uuid(), :phone, :email, :password_hash, :role, true, NOW(), NOW())
                     """
                 ),
                 {

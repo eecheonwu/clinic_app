@@ -20,7 +20,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from models.user import User, UserRole, PatientProfile, VerificationOTP
+from models.user import User, UserRole, PatientProfile, VerificationOTP, EmailVerificationToken
 
 
 def hash_password(password: str) -> str:
@@ -74,9 +74,12 @@ class AuthService:
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
         )
+        # Determine audience claim per ADR-005
+        audience = "patient" if role == UserRole.PATIENT else "staff"
         payload = {
             "sub": str(user_id),
             "role": role.value,
+            "aud": audience,
             "type": "access",
             "exp": expire,
             "iat": datetime.now(timezone.utc),
@@ -110,6 +113,7 @@ class AuthService:
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"verify_aud": False},
         )
 
     def create_registration_token(self, registration_data: dict) -> str:
@@ -329,6 +333,236 @@ class AuthService:
 
         return user
 
+    # ── Email Verification Operations ───────────────────────────────────
+
+    async def check_email_rate_limit(self, email: str) -> int:
+        """
+        Check email verification request rate limit for an email address.
+        Max 3 requests per email per 15 minutes (900 seconds).
+        """
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=15)
+        try:
+            result = await self.db.execute(
+                select(func.count(EmailVerificationToken.id))
+                .where(EmailVerificationToken.email == email)
+                .where(EmailVerificationToken.created_at >= window_start)
+            )
+            return result.scalar_one()
+        except Exception:
+            return 0
+
+    async def create_email_verification_token(self, email: str) -> tuple[EmailVerificationToken, str]:
+        """
+        Create a new single-use 60-min email verification token for a patient.
+        Rate limited to max 3 per 15 minutes per email address.
+        Invalidates any prior active tokens for this email.
+        """
+        count = await self.check_email_rate_limit(email)
+        if count >= 3:
+            raise ValueError("Rate limit exceeded. Maximum 3 email verification requests per 15 minutes allowed.")
+
+        # Invalidate prior active tokens
+        prior_tokens = await self.db.execute(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.email == email)
+            .where(EmailVerificationToken.is_used == False)
+            .where(EmailVerificationToken.is_expired == False)
+        )
+        for token_record in prior_tokens.scalars():
+            token_record.is_expired = True
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = self.hash_password(raw_token)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=60)
+
+        token_record = EmailVerificationToken(
+            email=email,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            is_used=False,
+            is_expired=False,
+            attempts=0,
+        )
+        self.db.add(token_record)
+        await self.db.flush()
+
+        return token_record, raw_token
+
+    async def register_patient_with_email(
+        self,
+        email: str,
+        phone_number: str,
+        full_name: str,
+        date_of_birth: Optional[date | str] = None,
+        gender: Optional[str] = None,
+        emergency_contact: Optional[str] = None,
+    ) -> tuple[User, str]:
+        """
+        Register a patient using email + phone (ADR-005).
+        Creates user with is_email_verified=False and enqueues auth email token.
+        """
+        # Check email uniqueness
+        existing_email = await self.get_user_by_email(email)
+        if existing_email:
+            raise ValueError("User with this email already exists.")
+
+        # Check phone uniqueness
+        existing_phone = await self.get_user_by_phone(phone_number)
+        if existing_phone:
+            raise ValueError("User with this phone number already exists.")
+
+        # Create user with temp password and unverified email
+        temp_password = secrets.token_urlsafe(16)
+        password_hash = self.hash_password(temp_password)
+
+        user = User(
+            email=email,
+            phone_number=phone_number,
+            password_hash=password_hash,
+            role=UserRole.PATIENT,
+            is_email_verified=False,
+        )
+        self.db.add(user)
+        await self.db.flush()
+
+        # Parse date_of_birth
+        parsed_date_of_birth = None
+        if date_of_birth:
+            if isinstance(date_of_birth, str):
+                try:
+                    parsed_date_of_birth = datetime.strptime(date_of_birth, "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+            elif isinstance(date_of_birth, datetime):
+                parsed_date_of_birth = date_of_birth.date()
+            elif isinstance(date_of_birth, date):
+                parsed_date_of_birth = date_of_birth
+
+        profile = PatientProfile(
+            user_id=user.id,
+            full_name=full_name,
+            date_of_birth=parsed_date_of_birth,
+            gender=gender,
+            emergency_contact=emergency_contact,
+        )
+        self.db.add(profile)
+        await self.db.flush()
+
+        token_record, raw_token = await self.create_email_verification_token(email)
+
+        return user, raw_token
+
+    async def verify_email_token(
+        self,
+        raw_token: str,
+        password: str,
+    ) -> tuple[User, str, str]:
+        """
+        Verify an email verification token and set the patient's password (ADR-005).
+
+        Finds the matching token by iterating active tokens, verifying bcrypt hash.
+        Marks token as used, sets user password, marks email as verified.
+        Issues JWT access and refresh tokens with aud: "patient".
+
+        Returns:
+            tuple: (user, access_token, refresh_token)
+
+        Raises:
+            ValueError: If token is invalid, expired, or already used.
+        """
+        # Find all active (not used, not expired) tokens
+        result = await self.db.execute(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.is_used == False)
+            .where(EmailVerificationToken.is_expired == False)
+            .where(EmailVerificationToken.expires_at > datetime.now(timezone.utc))
+        )
+        active_tokens = result.scalars().all()
+
+        # Iterate and bcrypt-verify raw token against each hash
+        matched_token = None
+        for token_record in active_tokens:
+            if self.verify_password(raw_token, token_record.token_hash):
+                matched_token = token_record
+                break
+
+        if matched_token is None:
+            # Check if the token was already used (for 409 response)
+            all_tokens_result = await self.db.execute(
+                select(EmailVerificationToken)
+                .where(EmailVerificationToken.is_used == True)
+            )
+            used_tokens = all_tokens_result.scalars().all()
+            for token_record in used_tokens:
+                if self.verify_password(raw_token, token_record.token_hash):
+                    raise ValueError("TOKEN_ALREADY_USED")
+
+            raise ValueError("Invalid or expired verification token.")
+
+        # Mark token as used
+        matched_token.is_used = True
+
+        # Get user by email and update password + verification status
+        user = await self.get_user_by_email(matched_token.email)
+        if not user:
+            raise ValueError("User not found for this verification token.")
+
+        user.password_hash = self.hash_password(password)
+        user.is_email_verified = True
+        user.email_verified_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        # Issue JWT tokens with aud: "patient"
+        access_token = self.create_access_token(str(user.id), UserRole.PATIENT)
+        refresh_token = self.create_refresh_token(str(user.id))
+        return user, access_token, refresh_token
+
+    async def resend_verification_email(
+        self,
+        email: str,
+    ) -> tuple[Optional[User], Optional[str]]:
+        """
+        Resend email verification token to patient (ADR-005).
+
+        Invalidates existing active tokens for the email, generates a new token,
+        and enqueues verification email.
+
+        Returns:
+            tuple: (user, raw_token) or (None, None) if user not found.
+
+        Raises:
+            ValueError: If rate limit exceeded or email is already verified.
+        """
+        # 1. Enforce rate limit (3 requests per 15 minutes)
+        count = await self.check_email_rate_limit(email)
+        if count >= 3:
+            raise ValueError("Rate limit exceeded. Maximum 3 email verification requests per 15 minutes allowed.")
+
+        # 2. Find user by email
+        user = await self.get_user_by_email(email)
+        if not user:
+            return None, None
+
+        if user.is_email_verified:
+            raise ValueError("EMAIL_ALREADY_VERIFIED")
+
+        # 3. Invalidate prior active tokens
+        result = await self.db.execute(
+            select(EmailVerificationToken)
+            .where(EmailVerificationToken.email == email)
+            .where(EmailVerificationToken.is_used == False)
+            .where(EmailVerificationToken.is_expired == False)
+        )
+        active_tokens = result.scalars().all()
+        for token_record in active_tokens:
+            token_record.is_expired = True
+
+        # 4. Generate new verification token
+        token_record, raw_token = await self.create_email_verification_token(email)
+
+        return user, raw_token
+
     async def authenticate_staff(
         self,
         email: str,
@@ -352,6 +586,39 @@ class AuthService:
             return None
 
         return user
+
+    async def authenticate_patient(
+        self,
+        email: str,
+        password: str,
+    ) -> tuple[Optional[User], Optional[str]]:
+        """
+        Authenticate a patient user with email and password (ADR-005).
+
+        Returns:
+            tuple: (user, error_reason)
+            - (user, None) on success
+            - (None, "INVALID_CREDENTIALS") if email/password wrong or not a patient
+            - (None, "EMAIL_NOT_VERIFIED") if patient exists but email not verified
+        """
+        user = await self.get_user_by_email(email)
+        if not user:
+            return None, "INVALID_CREDENTIALS"
+
+        # Must be a patient
+        user_role = user.role if isinstance(user.role, UserRole) else UserRole(user.role)
+        if user_role != UserRole.PATIENT:
+            return None, "INVALID_CREDENTIALS"
+
+        # Verify password
+        if not self.verify_password(password, user.password_hash):
+            return None, "INVALID_CREDENTIALS"
+
+        # Check email verification status
+        if not user.is_email_verified:
+            return None, "EMAIL_NOT_VERIFIED"
+
+        return user, None
 
     async def get_user_verification_status(self, user_id: str) -> bool:
         """Check if user's phone is verified (has used an OTP)."""

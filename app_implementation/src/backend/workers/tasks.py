@@ -31,11 +31,17 @@ logger = logging.getLogger(__name__)
 
 async def _get_db_session():
     """Get async database session for task context."""
-    async with AsyncSessionLocal() as session:
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_async_engine(settings.database_url_async, echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
         try:
             yield session
         finally:
             await session.close()
+    await engine.dispose()
 
 
 # ── OTP Task ───────────────────────────────────────────────────────────────
@@ -337,3 +343,141 @@ def send_cancellation_alert_task(
     except Exception as e:
         self.retry(exc=e, countdown=60)
         return {"success": False, "error": str(e)}
+
+
+# ── Auth Email Delivery Task ───────────────────────────────────────────────
+
+@shared_task(
+    name="send_auth_email",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def send_auth_email(
+    self,
+    to_email: str,
+    verification_token: str,
+    full_name: Optional[str] = None,
+) -> dict:
+    """
+    Send authentication verification email containing password creation link.
+
+    Args:
+        to_email: Recipient email address
+        verification_token: Plaintext URL verification token
+        full_name: Optional recipient name
+
+    Returns:
+        dict with success status and provider used
+    """
+    import asyncio
+    from services.notification.providers.email_provider import EmailClient
+
+    async def _send():
+        async for db in _get_db_session():
+            client = EmailClient(db)
+            verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={verification_token}"
+            recipient_name = full_name or "Patient"
+
+            html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Verify Email</title></head>
+<body style="font-family: sans-serif; padding: 20px;">
+    <h2>Clinic Modernization Platform</h2>
+    <p>Hello {recipient_name},</p>
+    <p>Please click the link below to verify your email and set your password:</p>
+    <p><a href="{verification_url}" style="background: #0056b3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Create Password</a></p>
+    <p>Or copy this URL: {verification_url}</p>
+    <p>This link expires in 60 minutes.</p>
+</body>
+</html>"""
+
+            text_body = (
+                f"Hello {recipient_name},\n\n"
+                f"Please verify your email and create your password by visiting:\n"
+                f"{verification_url}\n\n"
+                f"This link expires in 60 minutes.\n\n"
+                f"Clinic Modernization Platform"
+            )
+
+            subject = "Verify Your Email - Clinic Modernization Platform"
+            success, error = await client.send_email(
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
+                template_name="auth_email",
+            )
+
+            if success:
+                logger.info("send_auth_email: Auth email sent to %s", to_email)
+            else:
+                logger.error("send_auth_email: Failed to send to %s: %s", to_email, error)
+
+            return {
+                "success": success,
+                "error": error,
+                "provider": "email",
+            }
+
+    try:
+        return asyncio.run(_send())
+    except Exception as e:
+        logger.error("send_auth_email exception for %s: %s", to_email, e, exc_info=True)
+        self.retry(exc=e, countdown=60)
+        return {"success": False, "error": str(e)}
+
+
+@shared_task(
+    name="send_email_notification",
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+)
+def send_email_notification(
+    self,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+    template_name: str = "generic_notification",
+) -> dict:
+    """
+    Send general transactional email.
+
+    Args:
+        to_email: Recipient email address
+        subject: Email subject line
+        html_body: HTML body string
+        text_body: Plaintext body string
+        template_name: Audit log template tag
+
+    Returns:
+        dict with success status and provider used
+    """
+    import asyncio
+    from services.notification.providers.email_provider import EmailClient
+
+    async def _send():
+        async for db in _get_db_session():
+            client = EmailClient(db)
+            success, error = await client.send_email(
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
+                template_name=template_name,
+            )
+
+            return {
+                "success": success,
+                "error": error,
+                "provider": "email",
+            }
+
+    try:
+        return asyncio.run(_send())
+    except Exception as e:
+        self.retry(exc=e, countdown=60)
+        return {"success": False, "error": str(e)}
+

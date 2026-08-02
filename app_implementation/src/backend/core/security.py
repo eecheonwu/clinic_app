@@ -19,20 +19,34 @@ from services.auth_service import AuthService, hash_password, verify_password
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/login")
 
 
-def RoleChecker(required_roles: list[UserRole]):
+def RoleChecker(required_roles: list[UserRole], required_audience: Optional[str] = None):
     """
-    Dependency factory for role-based access control.
+    Dependency factory for role-based access control with audience enforcement.
 
     Usage:
-        @router.get("/protected")
-        async def protected_route(current_user = Depends(RoleChecker([UserRole.DOCTOR]))):
+        # Staff-only endpoint (validates aud: "staff")
+        @router.get("/admin/reports")
+        async def reports(user = Depends(RoleChecker([UserRole.ADMIN], required_audience="staff"))):
+            ...
+
+        # Patient-only endpoint (validates aud: "patient")
+        @router.get("/patient/appointments")
+        async def my_appts(user = Depends(RoleChecker([UserRole.PATIENT], required_audience="patient"))):
+            ...
+
+        # Any-audience endpoint (no audience restriction)
+        @router.get("/me")
+        async def me(user = Depends(RoleChecker([UserRole.PATIENT, UserRole.DOCTOR]))):
             ...
 
     Args:
         required_roles: List of UserRole values that are allowed to access the endpoint.
+        required_audience: Optional audience claim to validate ('patient' or 'staff').
+            If provided, the JWT 'aud' claim must match exactly, otherwise 403 is returned.
 
     Returns:
-        A dependency that validates the JWT token and checks the user's role.
+        A dependency that validates the JWT token, checks the user's role, and
+        optionally enforces audience-based access control per ADR-005.
     """
 
     async def role_checker(
@@ -54,6 +68,15 @@ def RoleChecker(required_roles: list[UserRole]):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token type",
             )
+
+        # Enforce audience claim if required (ADR-005)
+        if required_audience is not None:
+            token_audience = payload.get("aud")
+            if token_audience != required_audience:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied. This endpoint requires '{required_audience}' audience.",
+                )
 
         # Get user
         user_id = payload.get("sub")
@@ -82,3 +105,4 @@ def RoleChecker(required_roles: list[UserRole]):
         return user
 
     return role_checker
+

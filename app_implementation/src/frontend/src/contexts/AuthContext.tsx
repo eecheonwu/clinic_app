@@ -9,6 +9,7 @@ export interface User {
     email: string
     role: 'patient' | 'receptionist' | 'doctor' | 'manager' | 'admin' | 'executive'
     isVerified: boolean
+    audience?: 'patient' | 'staff'
 }
 
 // Auth context type
@@ -16,6 +17,7 @@ interface AuthContextType {
     user: User | null
     isLoading: boolean
     login: (email: string, password: string) => Promise<void>
+    patientLogin: (email: string, password: string) => Promise<void>
     register: (data: RegisterData) => Promise<void>
     verifyOTP: (phoneNumber: string, otp: string) => Promise<void>
     logout: () => void
@@ -56,7 +58,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             // Fetch user data via /me endpoint
             const meResponse = await apiClient.get('/me')
-            const userData = meResponse.data
+            const userData = { ...meResponse.data, audience: 'staff' }
+            setUser(userData)
+            setUserState(userData)
+        } catch (error) {
+            throw error
+        }
+    }
+
+    const patientLogin = async (email: string, password: string): Promise<void> => {
+        try {
+            const response = await apiClient.post('/auth/patient/login', { email, password })
+            const { access_token, refresh_token } = response.data
+
+            setToken(access_token)
+            setRefreshToken(refresh_token)
+
+            // Fetch user data via /me endpoint
+            const meResponse = await apiClient.get('/me')
+            const userData = { ...meResponse.data, audience: 'patient' }
             setUser(userData)
             setUserState(userData)
         } catch (error) {
@@ -120,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ user, isLoading, login, register, verifyOTP, logout }}>
+        <AuthContext.Provider value={{ user, isLoading, login, patientLogin, register, verifyOTP, logout }}>
             {children}
         </AuthContext.Provider>
     )

@@ -72,6 +72,18 @@ class User(BaseModel):
         nullable=False,
         comment="RBAC role assignment",
     )
+    is_email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=func.text("false"),
+        nullable=False,
+        comment="Whether patient email address is verified",
+    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp when email was verified",
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -185,3 +197,56 @@ class VerificationOTP(BaseModel):
             f"<VerificationOTP(id={self.id}, phone={self.phone_number}, "
             f"used={self.is_used}, expires_at={self.expires_at})>"
         )
+
+
+class EmailVerificationToken(BaseModel):
+    """
+    Email verification token for patient registration & password creation.
+
+    Stores bcrypt hash of single-use URL verification token with 60-min TTL.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        index=True,
+        comment="Target patient email address",
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="bcrypt hash of the raw verification token",
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="Incorrect verification attempt count (max 5)",
+    )
+    is_used: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Whether token has been consumed for password creation",
+    )
+    is_expired: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Whether token has been manually expired/superseded",
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+        comment="Token expiry timestamp (60-minute TTL from creation)",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<EmailVerificationToken(id={self.id}, email={self.email}, "
+            f"used={self.is_used}, expired={self.is_expired}, expires_at={self.expires_at})>"
+        )
+

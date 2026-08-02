@@ -34,6 +34,52 @@ class PatientRegisterRequest(BaseModel):
         return _clean_phone(v)
 
 
+class PatientEmailRegisterRequest(BaseModel):
+    """Request schema for email-based patient registration (ADR-005)."""
+
+    email: EmailStr = Field(..., description="Patient email address")
+    phone_number: str = Field(..., min_length=10, max_length=15, description="Primary contact phone number")
+    full_name: str = Field(..., min_length=1, max_length=255, description="Full legal name")
+    date_of_birth: Optional[str] = Field(None, description="Date of birth (YYYY-MM-DD format)")
+    gender: Optional[str] = Field(None, max_length=10, description="Gender identity")
+    emergency_contact: Optional[str] = Field(None, max_length=255, description="Emergency contact")
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def sanitize_phone(cls, v: str) -> str:
+        return _clean_phone(v)
+
+
+class PatientVerifyEmailRequest(BaseModel):
+    """Request schema for email verification + password creation (ADR-005)."""
+
+    token: str = Field(..., min_length=1, description="Raw email verification token from URL")
+    password: str = Field(..., min_length=8, max_length=128, description="New password")
+    confirm_password: str = Field(..., min_length=8, max_length=128, description="Password confirmation")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Enforce ADR-005 password complexity: min 8, upper, lower, digit, special."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long.")
+        if not re.search(r'[A-Z]', v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not re.search(r'[a-z]', v):
+            raise ValueError("Password must contain at least one lowercase letter.")
+        if not re.search(r'[0-9]', v):
+            raise ValueError("Password must contain at least one digit.")
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', v):
+            raise ValueError("Password must contain at least one special character.")
+        return v
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request schema for resending patient email verification link (ADR-005)."""
+
+    email: EmailStr = Field(..., description="Patient email address")
+
+
 class VerifyRequestRequest(BaseModel):
     """Request schema for OTP verification request."""
 
@@ -63,6 +109,13 @@ class StaffLoginRequest(BaseModel):
     """Request schema for staff login."""
 
     email: EmailStr = Field(..., description="Staff email address")
+    password: str = Field(..., min_length=1, description="Password")
+
+
+class PatientLoginRequest(BaseModel):
+    """Request schema for patient login with email and password (ADR-005)."""
+
+    email: EmailStr = Field(..., description="Patient email address")
     password: str = Field(..., min_length=1, description="Password")
 
 

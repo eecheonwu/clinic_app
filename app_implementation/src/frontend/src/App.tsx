@@ -17,6 +17,9 @@ import { ReceptionistDashboardPage } from './pages/Staff/ReceptionistDashboardPa
 import { DoctorDashboardPage } from './pages/Doctor/DoctorDashboardPage'
 import { ManagerDashboardPage } from './pages/Manager/ManagerDashboardPage'
 import { AdminDashboardPage } from './pages/Admin/AdminDashboardPage'
+import { PatientRegisterPage } from './pages/Patient/PatientRegisterPage'
+import { PatientCreatePasswordPage } from './pages/Patient/PatientCreatePasswordPage'
+import { PatientLoginPage } from './pages/Patient/PatientLoginPage'
 
 // Loading spinner component
 function LoadingSpinner() {
@@ -81,6 +84,21 @@ function App() {
                     <Route path="/register" element={
                         <PublicRoute>
                             <RegisterPage />
+                        </PublicRoute>
+                    } />
+                    <Route path="/patient/register" element={
+                        <PublicRoute>
+                            <PatientRegisterPage />
+                        </PublicRoute>
+                    } />
+                    <Route path="/patient/create-password" element={
+                        <PublicRoute>
+                            <PatientCreatePasswordPage />
+                        </PublicRoute>
+                    } />
+                    <Route path="/patient/login" element={
+                        <PublicRoute>
+                            <PatientLoginPage />
                         </PublicRoute>
                     } />
                     <Route path="/verify-otp" element={<VerifyOTPPage />} />

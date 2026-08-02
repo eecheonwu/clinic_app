@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     INFOBIP_API_URL: str = "https://api.infobip.com"
     INFOBIP_BASE_URL: Optional[str] = None
 
+    # Email Provider Configuration
+    EMAIL_PROVIDER: str = "console"  # console, smtp, sendgrid, ses, mock
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_TLS: bool = False
+    SENDGRID_API_KEY: Optional[str] = None
+    AWS_SES_REGION: Optional[str] = None
+    EMAIL_FROM_ADDRESS: str = "noreply@clinic.ng"
+    EMAIL_FROM_NAME: str = "Clinic Modernization Platform"
+    EMAIL_VERIFICATION_BASE_URL: str = "http://localhost:5173/patient/create-password"
+    EMAIL_VERIFICATION_TOKEN_TTL_MINUTES: int = 60
+
     # Notification Timeouts
     NOTIFICATION_TIMEOUT_SECONDS: int = 15
     NOTIFICATION_MAX_RETRIES: int = 3

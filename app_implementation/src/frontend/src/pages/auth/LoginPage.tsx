@@ -138,8 +138,8 @@ export function LoginPage() {
                 {/* Footer */}
                 <p className="mt-6 text-center text-sm text-secondary-500">
                     Are you a patient?{' '}
-                    <Link to="/register" className="font-semibold text-primary-600 hover:text-primary-500 transition-colors">
-                        Register here
+                    <Link to="/patient/login" className="font-semibold text-primary-600 hover:text-primary-500 transition-colors">
+                        Patient Sign In
                     </Link>
                 </p>
             </div>

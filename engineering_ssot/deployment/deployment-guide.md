@@ -108,37 +108,69 @@ Per the implementation plan (Tasks 5.1–5.4), the following AWS infrastructure 
 | 0004 | Doctor availability, appointments | 2026-07-08 |
 | 0005 | Clinical records | 2026-07-09 |
 | 0006 | Security audit logs | 2026-07-10 |
+| 0007 | Email verification tokens table (`email_verification_tokens`) | 2026-08-02 |
+| 0008 | User email verification flags (`is_email_verified`, `email_verified_at`) | 2026-08-02 |
+| 0009 | Email NOT NULL constraint in `users` (`users.email NOT NULL`) | 2026-08-02 |
+
+#### Migration Deployment Verification Procedure
+1. **Staging Upgrade**: Execute `alembic upgrade head` in staging.
+2. **Schema & Data Verification**: Verify `email_verification_tokens` table exists, `users.email` is `NOT NULL`, and no data loss occurred.
+3. **Downgrade Testing**: Execute `alembic downgrade 0006` to verify reversible migration scripts.
+4. **Final Upgrade**: Re-apply `alembic upgrade head`.
 
 ---
 
-## Environment Configuration
+## Email Infrastructure & Security Configuration (ADR-004 & ADR-005)
 
-### Required Environment Variables
+### Email Provider Environment Settings
 
-| Variable | Purpose | Local Default |
-| ---------- | --------- | --------------- |
-| `DATABASE_URL` | PostgreSQL connection | `postgresql://cmp:cmp@db:5432/cmp` |
-| `REDIS_URL` | Redis connection | `redis://redis:6379/0` |
-| `JWT_SECRET_KEY` | JWT signing | Dev key in .env.docker |
-| `KMS_KEY_ID` | AWS KMS key for encryption | LocalStack key |
-| `AWS_ACCESS_KEY_ID` | AWS credentials | LocalStack test key |
-| `AWS_SECRET_ACCESS_KEY` | AWS credentials | LocalStack test key |
-| `AWS_ENDPOINT_URL` | LocalStack endpoint | `http://localstack:4566` |
-| `WHATSAPP_TOKEN` | WhatsApp Business API | Test token |
-| `TERMII_API_KEY` | Termii SMS API | Test key |
-| `INFOBIP_API_KEY` | Infobip SMS API | Test key |
+| Variable | Purpose | Staging/Prod Source |
+| ---------- | --------- | -------------------- |
+| `EMAIL_PROVIDER` | Active provider (`console`, `smtp`, `sendgrid`, `ses`) | AWS Secrets Manager / Parameter Store |
+| `EMAIL_FROM_ADDRESS` | Sender address (`noreply@clinic.ng`) | Environment Config |
+| `EMAIL_FROM_NAME` | Sender display name (`Clinic Modernization Platform`) | Environment Config |
+| `EMAIL_VERIFICATION_BASE_URL` | Patient password setup URL (`https://patient.clinic.ng/patient/create-password`) | Environment Config |
+| `SENDGRID_API_KEY` | API Key for SendGrid provider | AWS Secrets Manager (`/cmp/prod/sendgrid_api_key`) |
+| `AWS_SES_REGION` | AWS region for SES provider (`af-south-1`) | Environment Config |
+| `AWS_SES_ACCESS_KEY_ID` | IAM credentials for SES | AWS Secrets Manager (`/cmp/prod/aws_ses`) |
+| `AWS_SES_SECRET_ACCESS_KEY` | IAM credentials for SES | AWS Secrets Manager (`/cmp/prod/aws_ses`) |
+| `SMTP_HOST` / `SMTP_PORT` | SMTP fallback server host & port | Environment Config |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP authentication credentials | AWS Secrets Manager (`/cmp/prod/smtp`) |
+
+### AWS Secrets Manager Integration
+
+Secrets are fetched at runtime or injected into container environment variables via AWS ECS task definitions:
+- Secret Name: `cmp/production/secrets`
+  - `SENDGRID_API_KEY`
+  - `SMTP_PASSWORD`
+  - `AWS_SES_SECRET_ACCESS_KEY`
+  - `JWT_SECRET_KEY`
+
+### DNS Deliverability & Authentication (SPF, DKIM, DMARC)
+
+To prevent spoofing and ensure high inbox placement for email verification links:
+
+1. **SPF Record (TXT)**:
+   `v=spf1 include:sendgrid.net include:amazonses.com ~all`
+2. **DKIM Record (CNAME)**:
+   Configured via SendGrid / AWS SES CNAME tokens pointing to domain key verifiers.
+3. **DMARC Record (TXT)**:
+   `_dmarc.clinic.ng` TXT record: `v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc-reports@clinic.ng;`
 
 ---
 
-## Future: Email-based Patient Registration Deployment
+## Email Delivery Monitoring & Alerting (Task 11)
 
-When the Email-based Patient Registration feature (ADR-005) is implemented, the following additional deployment configuration will be needed:
+### CloudWatch Monitoring & Metrics
 
-- Email provider settings (SMTP/SendGrid/AWS SES)
-- DKIM/SPF/DMARC DNS records
-- `EMAIL_VERIFICATION_BASE_URL` environment variable
-- `EMAIL_FROM_ADDRESS` and `EMAIL_FROM_NAME` configuration
-- CloudWatch alarms for email delivery failure rate > 5%
+1. **NotificationLog Tracking**:
+   All email delivery attempts (registration tokens, resend requests) log entries in `notification_logs` with channel `email`, provider name (`console`/`smtp`/`sendgrid`/`ses`), status (`SENT`/`FAILED`), and latency.
+2. **CloudWatch Custom Metric**: `CMP/Notifications` -> `EmailDeliveryFailures` & `EmailDeliverySuccesses`.
+3. **CloudWatch Alarm Configuration**:
+   - **Alarm Name**: `CMP-HighEmailDeliveryFailureRate`
+   - **Metric**: `EmailDeliveryFailures / (EmailDeliveryFailures + EmailDeliverySuccesses) * 100`
+   - **Threshold**: `> 5%` over a 5-minute evaluation period.
+   - **Action**: Trigger SNS notification to DevOps on-call queue and fallback to backup provider per ADR-004.
 
 ---
 
@@ -152,4 +184,6 @@ When the Email-based Patient Registration feature (ADR-005) is implemented, the 
 - `knowledge/architecture/ADR/ADR-002-react-pwa-client.md`
 - `knowledge/architecture/ADR/ADR-003-application-level-column-encryption.md`
 - `knowledge/architecture/ADR/ADR-004-pluggable-notification-failover.md`
-- `knowledge/engineering/implementation-plan.md` — Tasks 5.1–5.4
+- `knowledge/architecture/ADR/ADR-005-email-patient-registration.md`
+- `knowledge/engineering/task-plan.md` — Checkpoints 1–7
+

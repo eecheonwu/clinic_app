@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,10 @@ from models.user import User, UserRole
 from services.auth_service import AuthService
 from api.v1.auth.schemas import (
     PatientRegisterRequest,
+    PatientEmailRegisterRequest,
+    PatientVerifyEmailRequest,
+    PatientLoginRequest,
+    ResendVerificationRequest,
     VerifyRequestRequest,
     VerifyCodeRequest,
     StaffLoginRequest,
@@ -33,9 +37,9 @@ from api.v1.auth.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Import Celery task for OTP delivery
+# Import Celery task for OTP & Email delivery
 try:
-    from workers.tasks import send_otp_task
+    from workers.tasks import send_otp_task, send_auth_email
     CELERY_AVAILABLE = True
 except ImportError:
     CELERY_AVAILABLE = False
@@ -45,6 +49,11 @@ router = APIRouter()
 
 
 # ── Helper Functions ───────────────────────────────────────────────────
+
+def _add_deprecation_headers(response: Response) -> None:
+    """Add standard deprecation headers for legacy OTP endpoints (ADR-005)."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Mon, 01 Feb 2027 00:00:00 GMT"
 
 def create_token_response(user: User) -> TokenResponse:
     """Create token response for a user."""
@@ -123,19 +132,199 @@ async def _send_otp_notification(db: AsyncSession, otp_id: str, phone_number: st
 
 # ── Endpoints ─────────────────────────────────────────────────────────
 
-@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register_patient(
-    request: PatientRegisterRequest,
+@router.post("/auth/patient/register", status_code=status.HTTP_200_OK)
+async def register_patient_email(
+    request: PatientEmailRegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Initiate patient registration.
+    Register a patient with email and phone (ADR-005).
+
+    Validates email format and uniqueness, validates phone number uniqueness,
+    creates unverified patient user record, generates 60-min TTL verification token,
+    and enqueues an authentication email containing password creation link.
+    """
+    auth_service = AuthService(db)
+
+    try:
+        user, raw_token = await auth_service.register_patient_with_email(
+            email=request.email,
+            phone_number=request.phone_number,
+            full_name=request.full_name,
+            date_of_birth=request.date_of_birth,
+            gender=request.gender,
+            emergency_contact=request.emergency_contact,
+        )
+        await db.commit()
+    except ValueError as e:
+        err_msg = str(e)
+        if "already exists" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=err_msg,
+            )
+        elif "rate limit" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=err_msg,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=err_msg,
+            )
+
+    # Enqueue auth email dispatch via Celery task if available
+    try:
+        if CELERY_AVAILABLE:
+            send_auth_email.delay(request.email, raw_token, request.full_name)
+            logger.info("Enqueued auth email task for %s", request.email)
+        else:
+            from services.notification.providers.email_provider import EmailClient
+            client = EmailClient(db)
+            verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={raw_token}"
+            await client.send_email(
+                to_email=request.email,
+                subject="Verify Your Email - Clinic Modernization Platform",
+                html_body=f"<p>Hello {request.full_name}, click link: {verification_url}</p>",
+                text_body=f"Hello {request.full_name}, visit {verification_url}",
+                template_name="auth_email",
+            )
+    except Exception as e:
+        logger.error("Failed to dispatch auth email to %s: %s", request.email, e, exc_info=True)
+
+    return {
+        "message": "Verification email sent. Please check your inbox to create your password."
+    }
+
+
+@router.post("/auth/patient/verify-email", status_code=status.HTTP_200_OK)
+async def verify_email_and_create_password(
+    request: PatientVerifyEmailRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Verify email token and create patient password (ADR-005).
+
+    Validates token, enforces password policy, sets password hash,
+    marks email as verified, and issues JWT with aud: "patient".
+    """
+    # Validate password match
+    if request.password != request.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match.",
+        )
+
+    auth_service = AuthService(db)
+
+    try:
+        user, access_token, refresh_token = await auth_service.verify_email_token(
+            raw_token=request.token,
+            password=request.password,
+        )
+        await db.commit()
+    except ValueError as e:
+        err_msg = str(e)
+        if err_msg == "TOKEN_ALREADY_USED":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This verification link has already been used. Please log in or request a new link.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=err_msg,
+        )
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "role": user.role.value if isinstance(user.role, UserRole) else user.role,
+            "is_email_verified": user.is_email_verified,
+        },
+    }
+
+
+@router.post("/auth/patient/resend-verification", status_code=status.HTTP_200_OK)
+async def resend_verification_email_endpoint(
+    request: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resend email verification link to patient (ADR-005).
+
+    Invalidates existing active tokens, generates a new token,
+    and enqueues verification email dispatch.
+    """
+    auth_service = AuthService(db)
+
+    try:
+        user, raw_token = await auth_service.resend_verification_email(request.email)
+        await db.commit()
+    except ValueError as e:
+        err_msg = str(e)
+        if err_msg == "EMAIL_ALREADY_VERIFIED":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email address is already verified.",
+            )
+        elif "rate limit" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=err_msg,
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=err_msg,
+            )
+
+    # Dispatch email if user was found
+    if user and raw_token:
+        try:
+            profile_name = user.email
+            if CELERY_AVAILABLE:
+                send_auth_email.delay(user.email, raw_token, profile_name)
+                logger.info("Enqueued resend auth email task for %s", user.email)
+            else:
+                from services.notification.providers.email_provider import EmailClient
+                client = EmailClient(db)
+                verification_url = f"{settings.EMAIL_VERIFICATION_BASE_URL}?token={raw_token}"
+                await client.send_email(
+                    to_email=user.email,
+                    subject="Verify Your Email - Clinic Modernization Platform",
+                    html_body=f"<p>Hello, click link: {verification_url}</p>",
+                    text_body=f"Hello, visit {verification_url}",
+                    template_name="auth_email",
+                )
+        except Exception as e:
+            logger.error("Failed to dispatch resend auth email to %s: %s", user.email, e, exc_info=True)
+
+    return {
+        "message": "Verification email sent. Please check your inbox to create your password."
+    }
+
+
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+async def register_patient(
+    request: PatientRegisterRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Initiate patient registration (DEPRECATED - Use /auth/patient/register).
 
     Validates that the phone number is not already registered,
     generates and sends an OTP code to the target phone number,
     and returns a signed registration token. Patient data is NOT
     persisted to the database until OTP verification completes.
     """
+    _add_deprecation_headers(response)
     auth_service = AuthService(db)
 
     # Check if user already exists
@@ -184,14 +373,16 @@ async def register_patient(
 @router.post("/verify-request", status_code=status.HTTP_202_ACCEPTED)
 async def verify_request(
     request: VerifyRequestRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Request an OTP for phone verification.
+    Request an OTP for phone verification (DEPRECATED - Use email verification flow).
 
     Rate limited: max 3 requests per phone per 15 minutes.
     In production, this would enqueue a task to send OTP via WhatsApp/SMS.
     """
+    _add_deprecation_headers(response)
     auth_service = AuthService(db)
 
     # Check if user exists
@@ -225,13 +416,15 @@ async def verify_request(
 @router.post("/verify-code", response_model=TokenResponse)
 async def verify_code(
     request: VerifyCodeRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Verify an OTP code and issue JWT tokens.
+    Verify an OTP code and issue JWT tokens (DEPRECATED - Use email verification flow).
 
     Validates the OTP and creates patient record in DB if registering, returning fresh tokens.
     """
+    _add_deprecation_headers(response)
     auth_service = AuthService(db)
 
     # 1. Verify OTP code
@@ -314,6 +507,42 @@ async def login(
 
 
 # ── Protected Endpoint Example ───────────────────────────────────────
+
+@router.post("/auth/patient/login", response_model=TokenResponse)
+async def patient_login(
+    request: PatientLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Patient login with email and password (ADR-005).
+
+    Validates email + password for patient role users.
+    Requires is_email_verified=True (returns 403 if unverified).
+    Returns JWT with aud: "patient".
+    """
+    auth_service = AuthService(db)
+
+    user, error_reason = await auth_service.authenticate_patient(
+        email=request.email,
+        password=request.password,
+    )
+
+    if error_reason == "EMAIL_NOT_VERIFIED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email address not verified. Please verify your email before logging in.",
+        )
+
+    if error_reason == "INVALID_CREDENTIALS" or user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    # Create tokens (create_access_token already adds aud: "patient" for patient role)
+    tokens = create_token_response(user)
+
+    return tokens
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(
